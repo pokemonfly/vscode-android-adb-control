@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cat Coding</title>
+  </head>
+  <body>
+    <img src="" id="pic" width="300" />
+    <div>12313213213213213</div>
+    <script>
+      window.addEventListener("message", event => {
+        const {pic} = event.data;
+        document.getElementById("pic").src = 'data:image/png;base64,' + pic;
+        console.log(event)
+      });
+      const vscode = acquireVsCodeApi();
+      // setInterval(() => {
+      //   vscode.postMessage({
+      //     command: "alert",
+      //     text: "🐛  on line "
+      //   });
+      // }, 1000);
+    </script>
+  </body>
+</html>

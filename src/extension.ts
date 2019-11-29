@@ -1,27 +1,100 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+const { commands, window } = vscode;
+const process = require("child_process");
+const OPEN_VIEW_COMMAND = "alc.openView";
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "androidlocalcontrol" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('extension.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World!');
-	});
-
-	context.subscriptions.push(disposable);
+function exec(cmd: string) {
+  return new Promise((res, rej) => {
+    process.exec(cmd, function(error: any, stdout: any) {
+      if (error !== null) {
+        console.log("exec error: " + error);
+        rej(error);
+      }
+      res(stdout);
+    });
+  });
 }
 
-// this method is called when your extension is deactivated
+// function test() {
+//   exec(`adb exec-out screencap -p D:\\test.png`).then(async () => {
+//     // vscode.workspace.fs
+//     //   .readFile(vscode.Uri.file("D:\\test.png"))
+//     //   .then(data => {});
+//   });
+// }
+
+export function activate(context: vscode.ExtensionContext) {
+  // test();
+
+  let { subscriptions } = context;
+  // 创建Icon
+  let openViewBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  openViewBarItem.text = `$(versions)`;
+  openViewBarItem.command = OPEN_VIEW_COMMAND;
+  subscriptions.push(openViewBarItem);
+
+  openViewBarItem.show();
+
+  // 加载HTML文件
+  let webviewHTML: string = "";
+  vscode.workspace.fs
+    .readFile(vscode.Uri.file(context.asAbsolutePath("./out/webview.html")))
+    .then(data => {
+      webviewHTML = data.toString();
+    });
+
+  subscriptions.push(
+    commands.registerCommand(OPEN_VIEW_COMMAND, async () => {
+      // const a = await exec(`adb devices -l`);
+      // console.log(a);
+
+      const panel = vscode.window.createWebviewPanel(
+        "control",
+        "AndroidLocalControl",
+        vscode.ViewColumn.One,
+        { enableScripts: true }
+      );
+      panel.webview.html = webviewHTML;
+
+      panel.webview.onDidReceiveMessage(
+        message => {
+          switch (message.command) {
+            case "alert":
+              vscode.window.showErrorMessage(message.text);
+              return;
+          }
+        },
+        undefined,
+        context.subscriptions
+      );
+
+      const updateWebview = () => {
+        const path = context.asAbsolutePath("./cap.png");
+        exec(`adb exec-out screencap -p > ${path}`).then(() => {
+          vscode.workspace.fs.readFile(vscode.Uri.file(path)).then(data => {
+            let url = new Buffer(data).toString("base64");
+            console.log(url.length)
+            panel.webview.postMessage({
+              pic: url
+            });
+          });
+        });
+      };
+      updateWebview();
+      const interval = setInterval(updateWebview, 10000);
+      panel.onDidDispose(
+        () => {
+          // When the panel is closed, cancel any future updates to the webview content
+          clearInterval(interval);
+        },
+        null,
+        context.subscriptions
+      );
+    })
+  );
+}
+
 export function deactivate() {}
