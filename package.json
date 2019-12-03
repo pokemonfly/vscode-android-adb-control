@@ -6,6 +6,10 @@
   "engines": {
     "vscode": "^1.40.0"
   },
+  "icon": "./icon.png",
+  "publisher": "pokemonfly",
+  "repository": "",
+  "license": "GNU General Public License (GPL)",
   "categories": [
     "Other"
   ],
@@ -32,8 +36,5 @@
     "tslint": "^5.20.0",
     "typescript": "^3.6.4",
     "vscode-test": "^1.2.2"
-  },
-  "dependencies": {
-    "canvas": "^2.6.0"
   }
 }

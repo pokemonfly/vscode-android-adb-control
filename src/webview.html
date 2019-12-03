@@ -4,23 +4,60 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cat Coding</title>
+    <style>
+      canvas {
+      }
+    </style>
   </head>
   <body>
-    <img src="" id="pic" width="300" />
-    <div>12313213213213213</div>
+    <div>
+      <canvas id="canvas"></canvas>
+    </div>
     <script>
-      window.addEventListener("message", event => {
-        const {pic} = event.data;
-        document.getElementById("pic").src = 'data:image/png;base64,' + pic;
-        console.log(event)
-      });
-      const vscode = acquireVsCodeApi();
-      // setInterval(() => {
-      //   vscode.postMessage({
-      //     command: "alert",
-      //     text: "🐛  on line "
-      //   });
-      // }, 1000);
+      (function() {
+        const vscode = acquireVsCodeApi();
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        let W = 500;
+        let aspect = 1;
+        let rate = 1;
+        window.addEventListener("message", event => {
+          const { pic } = event.data;
+          let img = new Image();
+          img.src = "data:image/png;base64," + pic;
+          img.onload = () => {
+            ctx.clearRect(0, 0, W, W * aspect);
+            aspect = img.height / img.width;
+            rate = img.width / W;
+            canvas.width = W;
+            canvas.height = W * aspect;
+            ctx.drawImage(img, 0, 0, W, W * aspect);
+          };
+        });
+
+        let mousePoint = [];
+        const sendMsg = () => {
+          let command = mousePoint.length == 2 ? "tap" : "swipe";
+          vscode.postMessage({
+            command,
+            data: mousePoint.map(i => i * rate)
+          });
+          console.log(mousePoint.map(i => ~~(i * rate)));
+        };
+        canvas.addEventListener("mousedown", event => {
+          mousePoint = [event.offsetX, event.offsetY];
+        });
+        canvas.addEventListener("mouseup", event => {
+          if (
+            mousePoint[0] != event.offsetX ||
+            mousePoint[1] != event.offsetY
+          ) {
+            mousePoint.push(event.offsetX);
+            mousePoint.push(event.offsetY);
+          }
+          sendMsg();
+        });
+      })();
     </script>
   </body>
 </html>

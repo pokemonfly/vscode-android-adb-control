@@ -7,7 +7,7 @@ function exec(cmd: string) {
   return new Promise((res, rej) => {
     process.exec(cmd, function(error: any, stdout: any) {
       if (error !== null) {
-        console.log("exec error: " + error);
+        console.error("exec error: " + error);
         rej(error);
       }
       res(stdout);
@@ -47,9 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
   subscriptions.push(
-    commands.registerCommand(OPEN_VIEW_COMMAND, async () => {
-      // const a = await exec(`adb devices -l`);
-      // console.log(a);
+    commands.registerCommand(OPEN_VIEW_COMMAND, () => {
+      let isAcitve = true;
+      let interval: NodeJS.Timeout;
 
       const panel = vscode.window.createWebviewPanel(
         "control",
@@ -60,12 +60,11 @@ export function activate(context: vscode.ExtensionContext) {
       panel.webview.html = webviewHTML;
 
       panel.webview.onDidReceiveMessage(
-        message => {
-          switch (message.command) {
-            case "alert":
-              vscode.window.showErrorMessage(message.text);
-              return;
-          }
+        (message: { command: "tap" | "swipe"; data: number[] }) => {
+          let cmd = `adb shell input ${message.command} ${message.data.join(
+            " "
+          )}`;
+          exec(cmd);
         },
         undefined,
         context.subscriptions
@@ -73,21 +72,30 @@ export function activate(context: vscode.ExtensionContext) {
 
       const updateWebview = () => {
         const path = context.asAbsolutePath("./cap.png");
-        exec(`adb exec-out screencap -p > ${path}`).then(() => {
-          vscode.workspace.fs.readFile(vscode.Uri.file(path)).then(data => {
-            let url = new Buffer(data).toString("base64");
-            console.log(url.length)
-            panel.webview.postMessage({
-              pic: url
+        exec(`adb exec-out screencap -p > ${path}`)
+          .then(() => {
+            vscode.workspace.fs.readFile(vscode.Uri.file(path)).then(data => {
+              let url = new Buffer(data).toString("base64");
+              panel.webview.postMessage({
+                pic: url
+              });
+              isAcitve && setTimeout(updateWebview, 0);
             });
+          })
+          .catch(e => {
+            console.error(e);
+            vscode.window.showErrorMessage(e.message);
+            if (isAcitve) {
+              interval = setTimeout(updateWebview, 2e3);
+            }
           });
-        });
       };
+
       updateWebview();
-      const interval = setInterval(updateWebview, 10000);
+
       panel.onDidDispose(
         () => {
-          // When the panel is closed, cancel any future updates to the webview content
+          isAcitve = false;
           clearInterval(interval);
         },
         null,
