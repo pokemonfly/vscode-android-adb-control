@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
-const { commands, window } = vscode;
-const process = require("child_process");
+import * as process from "child_process";
+
 const OPEN_VIEW_COMMAND = "alc.openView";
+const PORT = 53519;
 
 function exec(cmd: string) {
-  return new Promise((res, rej) => {
-    process.exec(cmd, function(error: any, stdout: any) {
+  console.log("cmd: ", cmd);
+  return new Promise<string>((res, rej) => {
+    process.exec(cmd, function(error, stdout: string) {
       if (error !== null) {
         console.error("exec error: " + error);
         rej(error);
@@ -15,17 +17,7 @@ function exec(cmd: string) {
   });
 }
 
-// function test() {
-//   exec(`adb exec-out screencap -p D:\\test.png`).then(async () => {
-//     // vscode.workspace.fs
-//     //   .readFile(vscode.Uri.file("D:\\test.png"))
-//     //   .then(data => {});
-//   });
-// }
-
 export function activate(context: vscode.ExtensionContext) {
-  // test();
-
   let { subscriptions } = context;
   // 创建Icon
   let openViewBarItem = vscode.window.createStatusBarItem(
@@ -44,21 +36,47 @@ export function activate(context: vscode.ExtensionContext) {
     .readFile(vscode.Uri.file(context.asAbsolutePath("./out/webview.html")))
     .then(data => {
       webviewHTML = data.toString();
+      webviewHTML = webviewHTML.replace("{{PORT}}", PORT.toString());
     });
 
   subscriptions.push(
-    commands.registerCommand(OPEN_VIEW_COMMAND, () => {
-      let isAcitve = true;
-      let interval: NodeJS.Timeout;
-
+    vscode.commands.registerCommand(OPEN_VIEW_COMMAND, async () => {
+      // 开启服务
+      let classPath = await exec(`adb shell pm path com.rayworks.droidcast`);
+      classPath = classPath.replace("package:", "");
+      classPath = classPath.replace(/\.apk\s+/, ".apk");
+      await exec(`adb forward tcp:${PORT} tcp:${PORT}`);
+      console.log("classPath", classPath);
+      console.log(
+        "cmd:: ",
+        `adb shell CLASSPATH=${classPath} app_process / com.rayworks.droidcast.Main --port=${PORT}`
+      );
+      let handler = process.spawn(
+        "adb",
+        [
+          "shell",
+          `CLASSPATH=${classPath}`,
+          "app_process",
+          "/",
+          "com.rayworks.droidcast.Main",
+          `--port=${PORT}`
+        ]
+        // `adb shell CLASSPATH=${classPath} app_process / com.rayworks.droidcast.Main --port=${PORT}`
+      );
       const panel = vscode.window.createWebviewPanel(
         "control",
         "AndroidLocalControl",
         vscode.ViewColumn.One,
         { enableScripts: true }
       );
-      panel.webview.html = webviewHTML;
-
+      let isRun = false;
+      handler.stdout.on("data", data => {
+        console.log(data.toString());
+        if (!isRun) {
+          panel.webview.html = webviewHTML;
+          isRun = true;
+        }
+      });
       panel.webview.onDidReceiveMessage(
         (message: { command: "tap" | "swipe"; data: number[] }) => {
           let cmd = `adb shell input ${message.command} ${message.data.join(
@@ -69,34 +87,10 @@ export function activate(context: vscode.ExtensionContext) {
         undefined,
         context.subscriptions
       );
-
-      const updateWebview = () => {
-        const path = context.asAbsolutePath("./cap.png");
-        exec(`adb exec-out screencap -p > ${path}`)
-          .then(() => {
-            vscode.workspace.fs.readFile(vscode.Uri.file(path)).then(data => {
-              let url = new Buffer(data).toString("base64");
-              panel.webview.postMessage({
-                pic: url
-              });
-              isAcitve && setTimeout(updateWebview, 0);
-            });
-          })
-          .catch(e => {
-            console.error(e);
-            vscode.window.showErrorMessage(e.message);
-            if (isAcitve) {
-              interval = setTimeout(updateWebview, 2e3);
-            }
-          });
-      };
-
-      updateWebview();
-
       panel.onDidDispose(
         () => {
-          isAcitve = false;
-          clearInterval(interval);
+          handler.kill();
+          isRun = false;
         },
         null,
         context.subscriptions

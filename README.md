@@ -1,1 +1,2 @@
-# 演示用
+# adb remote control
+

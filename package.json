@@ -1,14 +1,14 @@
 {
   "name": "androidlocalcontrol",
-  "displayName": "androidlocalcontrol",
+  "displayName": "Android Local Control",
   "description": "",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.40.0"
   },
-  "icon": "./icon.png",
+  "icon": "icon.png",
   "publisher": "pokemonfly",
-  "repository": "",
+  "repository": "emmmmm",
   "license": "GNU General Public License (GPL)",
   "categories": [
     "Other"
