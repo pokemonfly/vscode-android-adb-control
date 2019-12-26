@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html,
+      body {
+        position: relative;
+        background: rgb(39, 40, 34);
+        margin: 0;
+        padding: 0;
+      }
+
+      .canvas-panel {
+        position: fixed;
+        /* width: 300px; */
+        /* opacity: 0.04; */
+        right: 10px;
+        bottom: 10px;
+        z-index: 9999;
+      }
+
+      #canvas {
+        width: 100%;
+        height: 100%;
+      }
+
+      .fake-panel {
+        margin-top: 2em;
+        width: 100%;
+        background: transparent;
+        color: #ffffff;
+        border: 0;
+        white-space: pre;
+      }
+
+      .fake-panel:focus {
+        outline: 0;
+      }
+
+      .control {
+        background: lightyellow;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        font-size: 0.8em;
+        height: 2em;
+        line-height: 2em;
+        text-align: right;
+      }
+
+      .control > * {
+        display: inline-block;
+        padding-right: 1em;
+        color: #3e3d32;
+        user-select: none;
+      }
+
+      .hideen {
+        display: hidden;
+      }
+    </style>
+    <script src="{{jQuery}}"></script>
+  </head>
+
+  <body>
+    <div class="canvas-panel">
+      <canvas id="canvas"></canvas>
+    </div>
+    <div class="control">
+      <span>FPS: <span id="fps"></span></span>
+      <a id="slow">Slow Mode</a>
+      <a id="fast">Fast Mode</a>
+      <a id="home">Home</a>
+      <a id="biger">扩大</a>
+      <a id="smaller">缩小</a>
+      <a id="low">低品质</a>
+      <a id="high">高品质</a>
+    </div>
+    <div contenteditable class="fake-panel">
+      import * as vscode from "vscode"; import * as process from
+      "child_process"; const OPEN_VIEW_COMMAND = "alc.openView"; const PORT =
+      53519; function exec(cmd: string) { console.log("cmd: ", cmd); return new
+      Promise string((res, rej) => { process.exec(cmd, function(error, stdout:
+      string) { if (error !== null) { console.error("exec error: " + error);
+      rej(error); } res(stdout); }); }); }
+    </div>
+    <script>
+      (function() {
+        const url = "ws://127.0.0.1:{{PORT}}/ws";
+        const vscode = acquireVsCodeApi();
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const ws = new WebSocket(url);
+        window.ws = ws;
+
+        let baseSize = null;
+        let MAX = 300;
+        let deviceSize = {
+          width: $(document).width(),
+          height: $(document).height()
+        };
+        let aspect = 1;
+        let rate = 1;
+        let rotation = 0;
+        let fps = 0;
+
+        let _cache = [];
+        const resize = (q = 95) => {
+          let w, h;
+          if (rotation == 0) {
+            w = Math.min(MAX, deviceSize.width);
+            h = ~~((w * baseSize.height) / baseSize.width);
+          } else {
+            w = Math.min(MAX, deviceSize.height);
+            h = ~~((w * baseSize.width) / baseSize.height);
+          }
+          console.log("baseSize", baseSize);
+          console.log("resize", w, h, q, MAX);
+          ws.send(`w=${w}&h=${h}&q=${q}`);
+        };
+        ws.onmessage = function(msg) {
+          try {
+            let data = msg.data;
+            if (data == "ok") {
+              return;
+            }
+            let obj = JSON.parse(data);
+            if (obj.width) {
+              // 基础信息
+              if (!baseSize) {
+                baseSize = obj;
+                resize();
+              }
+              if (rotation != obj.rotation) {
+                rotation = obj.rotation;
+                baseSize = obj;
+                resize();
+              }
+              return;
+            }
+            // 图片分片
+            if (obj.cur == 0) {
+              _cache = [];
+            }
+            _cache.push(obj);
+            if (_cache.length == obj.len) {
+              _cache.sort((a, b) => {
+                return a.cur - b.cur;
+              });
+              let pic = _cache.map(o => o.data).join("");
+              let img = new Image();
+              img.src = "data:image/jpeg;base64," + pic;
+              img.onload = () => {
+                aspect = img.height / img.width;
+                if (Math.min(img.width, img.height) > MAX) {
+                  console.log("ignore big img");
+                  ws.send("next");
+                  return;
+                }
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                ws.send("next");
+                fps++;
+              };
+            }
+          } catch (e) {
+            console.error(e);
+            console.log(msg);
+          }
+        };
+
+        let mousePoint = [];
+        const sendMsg = () => {
+          let command = mousePoint.length == 2 ? "tap" : "swipe";
+          let rate = baseSize.width / $(".canvas-panel").width();
+          let data = mousePoint.map(i => i * rate).join(" ");
+          vscode.postMessage({
+            command,
+            data
+          });
+          console.log("mousePoint:", data, " rate", rate);
+        };
+
+        $(canvas)
+          .on("mousedown", event => {
+            mousePoint = [event.offsetX, event.offsetY];
+          })
+          .on("mouseup", event => {
+            if (
+              mousePoint[0] != event.offsetX ||
+              mousePoint[1] != event.offsetY
+            ) {
+              mousePoint.push(event.offsetX);
+              mousePoint.push(event.offsetY);
+            }
+            sendMsg();
+          });
+
+        // FPS
+        setInterval(() => {
+          document.getElementById("fps").innerHTML = fps;
+          fps = 0;
+        }, 1000);
+
+        // Bar button
+        $(document)
+          .on('resize', () =>{
+            resize()
+          })
+          .on("click", "#high", () => {
+            resize(100);
+          })
+          .on("click", "#low", () => {
+            resize(80);
+          })
+          .on("click", "#biger", () => {
+            MAX = ~~(MAX * 1.2);
+            resize();
+          })
+          .on("click", "#smaller", () => {
+            MAX = ~~(MAX / 1.2);
+            resize();
+          });
+      })();
+    </script>
+  </body>
+</html>

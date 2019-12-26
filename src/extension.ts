@@ -32,6 +32,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   // 加载HTML文件
   let webviewHTML: string = "";
+  const jqueryFile = vscode.Uri.file(
+    context.asAbsolutePath("./out/jquery.min.js")
+  );
+
   vscode.workspace.fs
     .readFile(vscode.Uri.file(context.asAbsolutePath("./out/webview.html")))
     .then(data => {
@@ -46,32 +50,32 @@ export function activate(context: vscode.ExtensionContext) {
       classPath = classPath.replace("package:", "");
       classPath = classPath.replace(/\.apk\s+/, ".apk");
       await exec(`adb forward tcp:${PORT} tcp:${PORT}`);
-      console.log("classPath", classPath);
+
       console.log(
-        "cmd:: ",
+        "cmd: ",
         `adb shell CLASSPATH=${classPath} app_process / com.rayworks.droidcast.Main --port=${PORT}`
       );
-      let handler = process.spawn(
-        "adb",
-        [
-          "shell",
-          `CLASSPATH=${classPath}`,
-          "app_process",
-          "/",
-          "com.rayworks.droidcast.Main",
-          `--port=${PORT}`
-        ]
-        // `adb shell CLASSPATH=${classPath} app_process / com.rayworks.droidcast.Main --port=${PORT}`
-      );
+      let handler = process.spawn("adb", [
+        "shell",
+        `CLASSPATH=${classPath}`,
+        "app_process",
+        "/",
+        "com.rayworks.droidcast.Main",
+        `--port=${PORT}`
+      ]);
       const panel = vscode.window.createWebviewPanel(
         "control",
         "AndroidLocalControl",
         vscode.ViewColumn.One,
         { enableScripts: true }
       );
+      panel.webview.html = "<html><body>loading...</body></html>";
+      webviewHTML = webviewHTML.replace(
+        "{{jQuery}}",
+        panel.webview.asWebviewUri(jqueryFile).toString()
+      );
       let isRun = false;
       handler.stdout.on("data", data => {
-        console.log(data.toString());
         if (!isRun) {
           panel.webview.html = webviewHTML;
           isRun = true;
@@ -79,9 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
       });
       panel.webview.onDidReceiveMessage(
         (message: { command: "tap" | "swipe"; data: number[] }) => {
-          let cmd = `adb shell input ${message.command} ${message.data.join(
-            " "
-          )}`;
+          let cmd = `adb shell input ${message.command} ${message.data}`;
           exec(cmd);
         },
         undefined,

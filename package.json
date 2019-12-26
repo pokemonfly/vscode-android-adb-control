@@ -20,7 +20,7 @@
   "contributes": {},
   "scripts": {
     "vscode:prepublish": "yarn run compile",
-    "copy": "copy src\\*.html out",
+    "copy": "copy src\\static\\* out\\*",
     "compile": "npm run copy & tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile",
