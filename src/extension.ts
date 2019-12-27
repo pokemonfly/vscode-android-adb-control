@@ -16,6 +16,15 @@ function exec(cmd: string) {
     });
   });
 }
+function getNonce() {
+  let text = "";
+  const possible =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < 32; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+}
 
 export function activate(context: vscode.ExtensionContext) {
   let { subscriptions } = context;
@@ -74,6 +83,12 @@ export function activate(context: vscode.ExtensionContext) {
         "{{jQuery}}",
         panel.webview.asWebviewUri(jqueryFile).toString()
       );
+      webviewHTML = webviewHTML.replace(
+        "{{cspSource}}",
+        panel.webview.cspSource
+      );
+      let nonce = getNonce();
+      webviewHTML = webviewHTML.replace(/{{nonce}}/g, nonce);
       let isRun = false;
       handler.stdout.on("data", data => {
         if (!isRun) {
@@ -82,7 +97,10 @@ export function activate(context: vscode.ExtensionContext) {
         }
       });
       panel.webview.onDidReceiveMessage(
-        (message: { command: "tap" | "swipe"; data: number[] }) => {
+        (message: {
+          command: "tap" | "swipe" | "keyevent";
+          data: number[];
+        }) => {
           let cmd = `adb shell input ${message.command} ${message.data}`;
           exec(cmd);
         },

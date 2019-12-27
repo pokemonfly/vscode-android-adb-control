@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'unsafe-inline' 'self' {{cspSource}} ws:; img-src data:;"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <style>
       html,
       body {
@@ -14,8 +19,7 @@
 
       .canvas-panel {
         position: fixed;
-        /* width: 300px; */
-        /* opacity: 0.04; */
+        opacity: 0.1;
         right: 10px;
         bottom: 10px;
         z-index: 9999;
@@ -71,13 +75,18 @@
     </div>
     <div class="control">
       <span>FPS: <span id="fps"></span></span>
-      <a id="slow">Slow Mode</a>
-      <a id="fast">Fast Mode</a>
-      <a id="home">Home</a>
+      <a id="back">Back键</a>
+      <a id="home">Home键</a>
+      <a id="task">Task键</a>
       <a id="biger">扩大</a>
       <a id="smaller">缩小</a>
-      <a id="low">低品质</a>
-      <a id="high">高品质</a>
+      <a id="lowerSpeed">超低速</a>
+      <a id="lowSpeed">低速</a>
+      <a id="normalSpeed">常速</a>
+      <a id="darker">变暗</a>
+      <a id="lighter">变亮</a>
+      <a id="hide">隐藏</a>
+      <a id="show">显示</a>
     </div>
     <div contenteditable class="fake-panel">
       import * as vscode from "vscode"; import * as process from
@@ -97,48 +106,56 @@
         window.ws = ws;
 
         let baseSize = null;
-        let MAX = 300;
-        let deviceSize = {
-          width: $(document).width(),
-          height: $(document).height()
-        };
-        let aspect = 1;
-        let rate = 1;
+        let max = 300;
+
+        let aspect = 2;
+        let rate = 3;
         let rotation = 0;
         let fps = 0;
+        let fpsCut = 0;
 
         let _cache = [];
-        const resize = (q = 95) => {
+
+        const resize = (q = 90) => {
           let w, h;
+          let deviceSize = {
+            width: $(document).width(),
+            height: $(document).height()
+          };
+
           if (rotation == 0) {
-            w = Math.min(MAX, deviceSize.width);
-            h = ~~((w * baseSize.height) / baseSize.width);
+            w = Math.min(max, deviceSize.width);
+            h = ~~(w * aspect);
           } else {
-            w = Math.min(MAX, deviceSize.height);
-            h = ~~((w * baseSize.width) / baseSize.height);
+            w = Math.min(max, deviceSize.height);
+            h = ~~(w * aspect);
           }
-          console.log("baseSize", baseSize);
-          console.log("resize", w, h, q, MAX);
+          console.log("baseSize", baseSize, deviceSize, rotation);
+          console.log("resize", w, h, q, max);
           ws.send(`w=${w}&h=${h}&q=${q}`);
+        };
+        ws.onopen = function() {
+          console.log("ws open");
+          ws.send("info");
         };
         ws.onmessage = function(msg) {
           try {
             let data = msg.data;
-            if (data == "ok") {
+            let obj = JSON.parse(data);
+            // 基础信息
+            if (obj.isRealSize) {
+              baseSize = {
+                w: Math.min(obj.height, obj.width),
+                h: Math.max(obj.height, obj.width)
+              };
+              aspect = baseSize.h / baseSize.w;
+              console.log("rebase", baseSize);
+              resize();
               return;
             }
-            let obj = JSON.parse(data);
-            if (obj.width) {
-              // 基础信息
-              if (!baseSize) {
-                baseSize = obj;
-                resize();
-              }
-              if (rotation != obj.rotation) {
-                rotation = obj.rotation;
-                baseSize = obj;
-                resize();
-              }
+            if (obj.rotation && rotation != obj.rotation) {
+              rotation = obj.rotation;
+              resize();
               return;
             }
             // 图片分片
@@ -154,8 +171,7 @@
               let img = new Image();
               img.src = "data:image/jpeg;base64," + pic;
               img.onload = () => {
-                aspect = img.height / img.width;
-                if (Math.min(img.width, img.height) > MAX) {
+                if (Math.min(img.width, img.height) > max) {
                   console.log("ignore big img");
                   ws.send("next");
                   return;
@@ -163,8 +179,17 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 canvas.width = img.width;
                 canvas.height = img.height;
+                if (baseSize) {
+                  rate = baseSize.h / Math.max(img.width, img.height);
+                }
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                ws.send("next");
+                if (fpsCut == 0) {
+                  ws.send("next");
+                } else {
+                  setTimeout(() => {
+                    ws.send("next");
+                  }, fpsCut * 1000);
+                }
                 fps++;
               };
             }
@@ -177,7 +202,6 @@
         let mousePoint = [];
         const sendMsg = () => {
           let command = mousePoint.length == 2 ? "tap" : "swipe";
-          let rate = baseSize.width / $(".canvas-panel").width();
           let data = mousePoint.map(i => i * rate).join(" ");
           vscode.postMessage({
             command,
@@ -209,22 +233,70 @@
 
         // Bar button
         $(document)
-          .on('resize', () =>{
-            resize()
+          .on("resize", () => {
+            console.log("resize");
+            ws.send("info");
+            resize();
           })
-          .on("click", "#high", () => {
-            resize(100);
+          .on("click", "#home", () => {
+            vscode.postMessage({
+              command: "keyevent",
+              data: "KEYCODE_HOME"
+            });
           })
-          .on("click", "#low", () => {
-            resize(80);
+          .on("click", "#back", () => {
+            vscode.postMessage({
+              command: "keyevent",
+              data: "KEYCODE_BACK"
+            });
+          })
+          .on("click", "#task", () => {
+            vscode.postMessage({
+              command: "keyevent",
+              data: "KEYCODE_APP_SWITCH"
+            });
           })
           .on("click", "#biger", () => {
-            MAX = ~~(MAX * 1.2);
+            max = ~~(max * 1.2);
             resize();
           })
           .on("click", "#smaller", () => {
-            MAX = ~~(MAX / 1.2);
+            max = ~~(max / 1.2);
             resize();
+          })
+          .on("click", "#normalSpeed", () => {
+            fpsCut = 0;
+            ws.send("next");
+          })
+          .on("click", "#lowSpeed", () => {
+            fpsCut = 1;
+            ws.send("next");
+          })
+          .on("click", "#lowerSpeed", () => {
+            fpsCut = 5;
+            ws.send("next");
+          })
+          .on("click", "#show", () => {
+            $(".canvas-panel").css({
+              opacity: 1
+            });
+          })
+          .on("click", "#darker", () => {
+            let opacity = +$(".canvas-panel").css("opacity");
+            $(".canvas-panel").css({
+              opacity: opacity - 0.01
+            });
+          })
+          .on("click", "#lighter", () => {
+            let opacity = +$(".canvas-panel").css("opacity");
+            $(".canvas-panel").css({
+              opacity: opacity + 0.01
+            });
+          })
+          .on("click", "#hide", () => {
+            $(".canvas-panel").css({
+              opacity: 0.1
+            });
           });
       })();
     </script>
